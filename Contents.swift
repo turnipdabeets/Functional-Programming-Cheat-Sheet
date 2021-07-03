@@ -425,3 +425,38 @@ func zip2<A, B, C>(
 // map:        ((A)    ->          C ) -> ((Parallel<A>)              -> Parallel<C>)
 // zip(with:): ((A, B) ->          C ) -> ((Parallel<A>, Parallel<B>) -> Parallel<C>)
 // flatMap:    ((A)    -> Parallel<C>) -> ((Parallel<A>)              -> Parallel<C>)
+
+
+/// Writer Monad wraps a Result and saves logs to be used by the caller
+/// This allows us to avoid a logging dependency but still embellish errors or successes
+/// Both result and logs are monoids becasue they allow for accumulation
+public struct Writer<Value> {
+    public let result: Result<Value, Error> // monoid
+    public let logs: [String] // monoid
+    
+    init(result: Result<Value, Error>, logs: [String] = []) {
+        self.result = result
+        self.logs = logs
+    }
+}
+
+extension Writer {
+    /// aka bind >>= you can read this as "then"
+    /// Logs are accumulated in order
+    /// flatMap also works with just Result becasue Result is also monadic
+    func flatMap<NewValue>(_ transform: (Value) -> Writer<NewValue>) -> Writer<NewValue> {
+        switch self.result {
+        case let .success(value):
+            let writer = transform(value)
+            switch writer.result {
+            case let .success(newValue):
+                return Writer<NewValue>(result: .success(newValue), logs: self.logs + writer.logs)
+            case let .failure(error):
+                return Writer<NewValue>(result: .failure(error), logs: self.logs + writer.logs)
+            }
+        case let .failure(error):
+            return Writer<NewValue>(result: .failure(error), logs: self.logs)
+        }
+    }
+}
+
